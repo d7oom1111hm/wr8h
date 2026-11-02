@@ -1,0 +1,35 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomId": {
+        ".read": "auth != null && (!data.child('players').exists() || data.child('players').childrenCount() < 2 || data.child('players').hasChild(auth.uid))",
+        "meta": {
+          ".write": "auth != null && (!data.exists() || data.parent().child('players').hasChild(auth.uid))",
+          ".validate": "newData.hasChildren(['mode', 'templateId', 'createdAt', 'hostUid'])"
+        },
+        "players": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && (data.exists() || data.parent().childrenCount() < 2)",
+            ".validate": "newData.hasChildren(['name', 'side', 'online', 'lastSeen']) && (newData.child('side').val() === 'left' || newData.child('side').val() === 'right' || newData.child('side').val() === 'both')"
+          }
+        },
+        "cursors": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($roomId).child('players').hasChild(auth.uid)"
+          }
+        },
+        "strokes": {
+          ".write": "auth != null && root.child('rooms').child($roomId).child('players').hasChild(auth.uid)",
+          "$strokeId": {
+            ".write": "auth != null && root.child('rooms').child($roomId).child('players').hasChild(auth.uid) && (!data.exists() ? newData.child('uid').val() === auth.uid : data.child('uid').val() === auth.uid)"
+          }
+        },
+        "liveStroke": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($roomId).child('players').hasChild(auth.uid)"
+          }
+        }
+      }
+    }
+  }
+}
