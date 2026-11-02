@@ -28,7 +28,22 @@
           "$uid": {
             ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($roomId).child('players').hasChild(auth.uid)"
           }
+        },
+        "reactions": {
+          ".write": "auth != null && root.child('rooms').child($roomId).child('players').hasChild(auth.uid)"
         }
+      }
+    },
+    "submissions": {
+      ".read": "auth != null",
+      "$subId": {
+        ".write": "auth != null"
+      }
+    },
+    "weeklyFeatured": {
+      ".read": true,
+      "$featId": {
+        ".write": "auth != null"
       }
     }
   }

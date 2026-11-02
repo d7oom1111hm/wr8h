@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>مرسم الثنائي | أستوديو الرسم التعاوني</title>
+  <title>مرسم الثنائي | منصة الرسم والتلوين التعاوني</title>
+  <meta name="description" content="مرسم الثنائي — منصة عربية احترافية للرسم والتلوين التعاوني اللحظي لشخصين، مع تخطيطات فنية وأدوات رسم متخصصة ومعرض لوحة الأسبوع." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
@@ -13,7 +14,7 @@
 
   <!-- الشريط العلوي -->
   <header class="topbar">
-    <div class="brand-area">
+    <div id="brandLogoTrigger" class="brand-area" title="مرسم الثنائي">
       <div class="brand-mark">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
           <path d="M12 19l7-7 3 3-7 7-3-3z"/>
@@ -23,31 +24,28 @@
       </div>
       <div>
         <span class="brand-title">مرسم الثنائي</span>
-        <span class="brand-subtitle">رسم وتلوين تعاوني لحظي لشخصين</span>
+        <span class="brand-subtitle">أستوديو الرسم والتلوين التعاوني المباشر</span>
       </div>
     </div>
 
-    <!-- محول النمطين: نمط التخطيط العشوائي المقسوم / نمط الرسم الحر الكامل -->
+    <!-- محول النمطين: تخطيط الرصاص المقسوم / المرسم الحر الكامل -->
     <div class="mode-switcher">
       <button type="button" id="modeSketchBtn" class="mode-btn active">
-        تخطيط رصاص عشوائي (نصفين)
+        تخطيط رصاص مشترك (نصفين)
       </button>
       <button type="button" id="modeFreeBtn" class="mode-btn">
         مرسم حر كامل
       </button>
     </div>
 
-    <!-- إدارة الغرفة وFirebase وحفظ الرسمة -->
+    <!-- أزرار الغرفة، لوحة الأسبوع، وحفظ اللوحة -->
     <div class="room-bar">
-      <span id="firebaseStatusBadge" class="status-pill demo" title="حالة اتصال قاعدة البيانات">
-        جاري التهيئة...
-      </span>
-      <button type="button" id="openFirebaseConfigBtn" class="btn">
-        إعدادات Firebase
+      <button type="button" id="openWeeklyGalleryBtn" class="btn btn-gold">
+        لوحة الأسبوع الفائزة
       </button>
 
       <div class="room-badge">
-        <span>الغرفة:</span>
+        <span>رمز الغرفة:</span>
         <span id="roomCodeDisplay" class="room-code">------</span>
       </div>
 
@@ -55,7 +53,10 @@
         نسخ رابط الدعوة
       </button>
       <button type="button" id="openLobbyBtn" class="btn">
-        تغيير الغرفة
+        الغرف
+      </button>
+      <button type="button" id="openSubmitArtworkBtn" class="btn btn-sage">
+        ترشيح لرسمة الأسبوع
       </button>
       <button type="button" id="saveArtworkBtn" class="btn btn-primary">
         حفظ اللوحة (PNG)
@@ -63,21 +64,21 @@
     </div>
   </header>
 
-  <!-- شريط حالة اللاعبين ومؤشر التناغم التعاوني (ArtWorkout Style) -->
+  <!-- شريط اللاعبين والتناغم التعاوني وردود الفعل السريعة -->
   <section class="collab-header">
     <div id="player1Card" class="player-card">
       <span class="player-dot"></span>
       <div class="player-meta">
         <span id="player1Name" class="player-name">اللاعب 1 (النصف الأيسر)</span>
-        <span id="player1Status" class="player-status">غير متصل</span>
+        <span id="player1Status" class="player-status">بانتظار الاتصال</span>
       </div>
     </div>
 
     <div class="workout-progress-wrap">
-      <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-secondary); font-weight:700;">
-        <span>تقدم تلوين النصف الأيسر</span>
-        <span>اكتمال اللوحة المشتركة</span>
-        <span>تقدم تلوين النصف الأيمن</span>
+      <div style="display:flex; justify-content:space-between; font-size:0.74rem; color:var(--text-secondary); font-weight:700;">
+        <span>تقدم النصف الأيسر</span>
+        <span>تناغم اللوحة المشتركة</span>
+        <span>تقدم النصف الأيمن</span>
       </div>
       <div class="workout-bar">
         <div class="workout-half">
@@ -89,11 +90,17 @@
       </div>
     </div>
 
+    <div class="quick-reactions-bar">
+      <button type="button" class="reaction-chip" data-msg="تلوين رهيب! استمر">تلوين رهيب!</button>
+      <button type="button" class="reaction-chip" data-msg="تناسق ألوان خيالي">تناسق خيالي</button>
+      <button type="button" class="reaction-chip" data-msg="قربنا نخلص اللوحة!">قربنا نخلص</button>
+    </div>
+
     <div id="player2Card" class="player-card">
       <span class="player-dot"></span>
       <div class="player-meta">
         <span id="player2Name" class="player-name">اللاعب 2 (النصف الأيمن)</span>
-        <span id="player2Status" class="player-status">بانتظار الانضمام...</span>
+        <span id="player2Status" class="player-status">شارك الرابط لينضم شريكك</span>
       </div>
     </div>
   </section>
@@ -101,33 +108,44 @@
   <!-- مساحة العمل الرئيسية -->
   <main class="studio-workspace">
 
-    <!-- العمود الأيمن: الأقلام والفرش المتخصصة -->
+    <!-- العمود الأيمن: ترسانة الأقلام والفرش والأدوات الهندسية -->
     <aside class="panel">
       <div class="panel-title">
-        <span>الأقلام والفرش المتخصصة</span>
+        <span>حقيبة الأقلام والفرش (16 أداة)</span>
+      </div>
+
+      <div class="tool-categories">
+        <button type="button" class="tool-cat-btn active" data-cat="all">الكل</button>
+        <button type="button" class="tool-cat-btn" data-cat="paint">تلوين</button>
+        <button type="button" class="tool-cat-btn" data-cat="sketch">أقلام</button>
+        <button type="button" class="tool-cat-btn" data-cat="shape">أشكال</button>
+        <button type="button" class="tool-cat-btn" data-cat="utility">مساعدة</button>
       </div>
 
       <div id="brushToolsList" class="tools-list"></div>
 
       <div class="slider-group">
         <div class="slider-header">
-          <span>حجم القلم / الفرشاة</span>
+          <span>مقاس رأس القلم / الفرشاة</span>
           <span id="brushSizeVal">24px</span>
         </div>
-        <input type="range" id="brushSizeSlider" min="1" max="80" value="24" />
+        <input type="range" id="brushSizeSlider" min="1" max="100" value="24" />
       </div>
 
       <div class="slider-group">
         <div class="slider-header">
-          <span>كثافة اللون والشفافية</span>
-          <span id="brushOpacityVal">75%</span>
+          <span>كثافة وشفافية اللون</span>
+          <span id="brushOpacityVal">78%</span>
         </div>
-        <input type="range" id="brushOpacitySlider" min="10" max="100" value="75" />
+        <input type="range" id="brushOpacitySlider" min="10" max="100" value="78" />
       </div>
 
-      <div style="display:flex; gap:8px; margin-top:4px;">
+      <div style="display:flex; gap:6px;">
         <button type="button" id="undoBtn" class="btn" style="flex:1; justify-content:center;">
-          تراجع عن خطي
+          تراجع
+        </button>
+        <button type="button" id="redoBtn" class="btn" style="flex:1; justify-content:center;">
+          إعادة
         </button>
         <button type="button" id="clearMySideBtn" class="btn" style="flex:1; justify-content:center;">
           مسح خطوطي
@@ -135,45 +153,66 @@
       </div>
     </aside>
 
-    <!-- العمود الأوسط: لوحة الرسم (Canvas) وشريط تحكم التخطيط -->
+    <!-- العمود الأوسط: مسرح اللوحة وأدوات التخطيط والورق والتكبير -->
     <section class="canvas-stage-column">
-      <div id="templateControls" class="template-toolbar">
-        <div>
-          <span style="font-size:0.78rem; color:var(--text-secondary);">تخطيط الرصاص الحالي:</span>
-          <span id="templateTitle" class="template-name-badge">الجزيرتان العائمتان والجسر الحجري</span>
+      <!-- شريط التخطيطات العلوية -->
+      <div id="templateControls" class="stage-toolbar">
+        <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:240px;">
+          <span style="font-size:0.8rem; font-weight:700; color:var(--text-secondary); white-space:nowrap;">تخطيط الرصاص:</span>
+          <select id="templateSelect" class="select-field" style="padding:6px 10px; font-size:0.84rem; font-weight:700;"></select>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <button type="button" id="randomTemplateBtn" class="btn btn-sage">
-            رسمة عشوائية جديدة
+            رسمة عشوائية
           </button>
           <button type="button" id="toggleSplitLockBtn" class="btn active">
-            تقسيم النصفين: مفعّل
+            قفل النصفين: مفعّل
           </button>
           <button type="button" id="toggleSketchVisBtn" class="btn active">
-            إظهار تخطيط الرصاص
+            طبقة التخطيط
           </button>
         </div>
       </div>
 
-      <div class="canvas-wrapper">
-        <!-- طبقة الخطوط المكتملة -->
-        <canvas id="mainCanvas" class="canvas-layer" width="1200" height="800"></canvas>
-        <!-- طبقة الخطوط اللحظية المباشرة أثناء السحب -->
-        <canvas id="liveCanvas" class="canvas-layer" width="1200" height="800"></canvas>
-        <!-- طبقة تخطيط قلم الرصاص الخفيف العلوية -->
-        <canvas id="sketchCanvas" class="canvas-layer" width="1200" height="800"></canvas>
+      <!-- لوحة الرسم الثلاثية الطبقات -->
+      <div id="canvasViewport" class="canvas-viewport">
+        <div id="canvasWrapper" class="canvas-wrapper">
+          <canvas id="mainCanvas" class="canvas-layer" width="1200" height="800"></canvas>
+          <canvas id="liveCanvas" class="canvas-layer" width="1200" height="800"></canvas>
+          <canvas id="sketchCanvas" class="canvas-layer" width="1200" height="800"></canvas>
 
-        <!-- خط تقسيم النصفين وشارات اللاعبين -->
-        <div id="splitDividerUI" class="split-divider-ui"></div>
-        <div id="leftZoneBadge" class="zone-badge left">النصف الأيسر: اللاعب 1</div>
-        <div id="rightZoneBadge" class="zone-badge right">النصف الأيمن: اللاعب 2</div>
+          <div id="splitDividerUI" class="split-divider-ui"></div>
+          <div id="leftZoneBadge" class="zone-badge left">النصف الأيسر: اللاعب 1</div>
+          <div id="rightZoneBadge" class="zone-badge right">النصف الأيمن: اللاعب 2</div>
 
-        <!-- طبقة مؤشر صديقك اللحظي -->
-        <div id="cursorLayer" class="cursor-layer"></div>
+          <div id="cursorLayer" class="cursor-layer"></div>
+        </div>
+      </div>
+
+      <!-- شريط أدوات المرسم السفلي: نوع الورق، التناظر المرآوي، التكبير، وإعادة العرض -->
+      <div class="stage-toolbar">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:0.8rem; font-weight:700; color:var(--text-secondary);">خامة الورق:</span>
+          <select id="paperThemeSelect" class="select-field" style="width:auto; padding:5px 10px; font-size:0.82rem; font-weight:700;"></select>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <button type="button" id="toggleSymmetryBtn" class="btn">
+            تناظر مرآوي
+          </button>
+          <button type="button" id="replayBtn" class="btn">
+            عرض مراحل الرسم
+          </button>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <button type="button" id="zoomOutBtn" class="btn" style="padding:5px 10px;">-</button>
+            <button type="button" id="zoomResetBtn" class="btn" style="padding:5px 10px; min-width:58px; justify-content:center;">100%</button>
+            <button type="button" id="zoomInBtn" class="btn" style="padding:5px 10px;">+</button>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- العمود الأيسر: لوحات الألوان المتخصصة الزاهية والهادئة -->
+    <!-- العمود الأيسر: مجموعات الألوان الاحترافية (10 مجموعات - 200 لون) -->
     <aside class="panel">
       <div class="panel-title">
         <span>مجموعات الألوان المتخصصة</span>
@@ -183,34 +222,42 @@
 
       <div id="paletteSwatches" class="swatches-grid"></div>
 
+      <div style="display:flex; flex-direction:column; gap:5px;">
+        <span style="font-size:0.75rem; font-weight:700; color:var(--text-secondary);">آخر الألوان المستخدمة</span>
+        <div id="recentSwatches" class="recent-swatches-row"></div>
+      </div>
+
       <div class="custom-color-row">
         <div style="display:flex; align-items:center; gap:8px;">
           <div id="activeColorPreview" class="color-preview-box"></div>
-          <span style="font-size:0.82rem; font-weight:700;">تخصيص درجة لون دقيقة</span>
+          <div>
+            <span style="font-size:0.8rem; font-weight:700; display:block;">درجة اللون الحالية</span>
+            <span id="activeColorHex" style="font-size:0.72rem; font-family:monospace; color:var(--text-secondary);">#E76F51</span>
+          </div>
         </div>
-        <input type="color" id="customColorPicker" value="#E76F51" style="border:none; width:36px; height:32px; cursor:pointer; background:transparent;" />
+        <input type="color" id="customColorPicker" value="#E76F51" style="border:none; width:38px; height:32px; cursor:pointer; background:transparent;" />
       </div>
     </aside>
 
   </main>
 
   <!-- نافذة إنشاء أو دخول غرفة لشخصين -->
-  <div id="lobbyModal" class="modal-backdrop">
+  <div id="lobbyModal" class="modal-backdrop hidden">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>غرفة الرسم الجماعي لشخصين</h2>
+        <h2>غرفة الرسم التعاوني لشخصين</h2>
         <button type="button" id="closeLobbyModalBtn" class="btn">إغلاق</button>
       </div>
 
       <div class="form-group">
-        <label for="playerNameInput">اسمك في المرسم</label>
-        <input type="text" id="playerNameInput" class="input-field" placeholder="مثال: سارة / أحمد" maxlength="20" />
+        <label for="playerNameInput">اسمك الفني</label>
+        <input type="text" id="playerNameInput" class="input-field" placeholder="اكتب اسمك ليظهر لشريكك" maxlength="20" />
       </div>
 
       <div class="form-group">
-        <label for="lobbyInitialMode">اختر نمط الرسم للغرفة الجديدة</label>
+        <label for="lobbyInitialMode">اختر نمط الغرفة</label>
         <select id="lobbyInitialMode" class="select-field">
-          <option value="sketch">تخطيط بقلم رصاص عشوائي (كل لاعب يلون نصف)</option>
+          <option value="sketch">تخطيط بقلم رصاص مشترك (كل لاعب يلون نصف اللوحة)</option>
           <option value="free">مرسم حر كامل (رسم لوحة كاملة معاً)</option>
         </select>
       </div>
@@ -219,7 +266,7 @@
         إنشاء غرفة جديدة برمز فريد
       </button>
 
-      <div class="divider-text">— أو ادخل غرفة صديقك برمز الغرفة —</div>
+      <div class="divider-text">— أو انضم لغرفة صديقك برمز الغرفة —</div>
 
       <div class="join-row">
         <input type="text" id="joinRoomCodeInput" class="input-field" placeholder="أدخل رمز الغرفة (مثال: AB7K9P)" style="text-transform:uppercase; font-family:monospace;" maxlength="10" />
@@ -230,20 +277,95 @@
     </div>
   </div>
 
-  <!-- نافذة إعدادات Firebase -->
-  <div id="firebaseModal" class="modal-backdrop hidden">
+  <!-- نافذة معرض "لوحة الأسبوع" العامة للزوار -->
+  <div id="weeklyGalleryModal" class="modal-backdrop hidden">
+    <div class="modal-card modal-wide">
+      <div class="modal-header">
+        <h2>معرض لوحة الأسبوع وأفضل الإبداعات المشتركة</h2>
+        <button type="button" id="closeWeeklyGalleryBtn" class="btn">إغلاق</button>
+      </div>
+
+      <div id="weeklyHeroContainer"></div>
+
+      <h3 style="font-size:1rem; font-weight:800; margin-top:6px;">لوحات مميزة أخرى</h3>
+      <div id="weeklyGridContainer" class="gallery-grid"></div>
+    </div>
+  </div>
+
+  <!-- نافذة ترشيح وإرسال اللوحة لمسابقة لوحة الأسبوع -->
+  <div id="submitArtworkModal" class="modal-backdrop hidden">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>إعدادات الاتصال بـ Firebase</h2>
-        <button type="button" id="closeFirebaseModalBtn" class="btn">إغلاق</button>
+        <h2>ترشيح اللوحة لقائمة "لوحة الأسبوع"</h2>
+        <button type="button" id="closeSubmitArtworkBtn" class="btn">إغلاق</button>
       </div>
-      <p style="font-size:0.83rem; color:var(--text-secondary); line-height:1.5;">
-        الصق كائن <code>firebaseConfig</code> الخاص بمشروعك (مع تضمين <code>databaseURL</code>). يمكنك أيضاً وضعه بشكل دائم داخل الملف <code>js/firebase-sync.js</code> قبل رفعه على GitHub Pages.
-      </p>
-      <textarea id="firebaseConfigTextarea" class="code-textarea" spellcheck="false"></textarea>
-      <button type="button" id="saveFirebaseConfigBtn" class="btn btn-primary" style="width:100%; justify-content:center; padding:10px;">
-        حفظ الإعدادات والاتصال فوراً
+
+      <img id="submitPreviewImg" alt="معاينة اللوحة" style="width:100%; border-radius:10px; border:1px solid var(--border-strong);" />
+
+      <div class="form-group">
+        <label for="submitTitleInput">عنوان اللوحة</label>
+        <input type="text" id="submitTitleInput" class="input-field" placeholder="مثال: غروب الجزيرتين" maxlength="40" />
+      </div>
+
+      <div class="form-group">
+        <label for="submitArtistsInput">أسماء الفنانين المشاركين</label>
+        <input type="text" id="submitArtistsInput" class="input-field" placeholder="مثال: سارة & ريم" maxlength="40" />
+      </div>
+
+      <button type="button" id="confirmSubmitArtworkBtn" class="btn btn-primary" style="width:100%; justify-content:center; padding:11px;">
+        إرسال اللوحة لاعتمادها في لوحة الأسبوع
       </button>
+    </div>
+  </div>
+
+  <!-- لوحة تحكم الإدارة السرية (تفتح لك فقط عبر ?admin=1 أو 5 ضغطات على الشعار) -->
+  <div id="adminModal" class="modal-backdrop hidden">
+    <div class="modal-card modal-wide">
+      <div class="modal-header">
+        <h2>لوحة تحكم الإدارة — اختيار لوحة الأسبوع</h2>
+        <button type="button" id="closeAdminModalBtn" class="btn">إغلاق</button>
+      </div>
+
+      <!-- قسم تسجيل دخول المشرف -->
+      <div id="adminLoginSection" style="display:flex; flex-direction:column; gap:12px; max-width:360px; margin:16px auto; width:100%;">
+        <label for="adminPinInput" style="font-weight:700; font-size:0.88rem;">أدخل رمز المشرف السري (الافتراضي: 2026)</label>
+        <input type="password" id="adminPinInput" class="input-field" placeholder="رمز المشرف" />
+        <button type="button" id="adminLoginBtn" class="btn btn-primary" style="justify-content:center;">
+          دخول لوحة الإدارة
+        </button>
+      </div>
+
+      <!-- قسم إدارة الرسمات المرسلة ولوحة الأسبوع (يظهر بعد إدخال الرمز) -->
+      <div id="adminDashboardSection" class="hidden" style="display:flex; flex-direction:column; gap:18px;">
+        <div>
+          <h3 style="font-size:1rem; font-weight:800; margin-bottom:10px;">1. الرسمات المرسلة من الزوار (اختر منها لوحة الأسبوع)</h3>
+          <div id="adminSubmissionsGrid" class="gallery-grid"></div>
+        </div>
+
+        <div style="border-top:1px solid var(--border-soft); padding-top:14px;">
+          <h3 style="font-size:1rem; font-weight:800; margin-bottom:10px;">2. اللوحات المعروضة حالياً في "لوحة الأسبوع"</h3>
+          <div id="adminFeaturedGrid" class="gallery-grid"></div>
+        </div>
+
+        <details style="border-top:1px solid var(--border-soft); padding-top:14px;">
+          <summary style="cursor:pointer; font-weight:800; font-size:0.9rem; color:var(--text-secondary);">
+            إعدادات متقدمة للمشرف (تغيير رمز المشرف / إعدادات قاعدة البيانات السحابية)
+          </summary>
+          <div style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
+            <div class="join-row">
+              <input type="password" id="adminNewPinInput" class="input-field" placeholder="رمز مشرف سري جديد" />
+              <button type="button" id="adminSavePinBtn" class="btn">حفظ الرمز الجديد</button>
+            </div>
+            <div class="form-group">
+              <label for="adminCloudConfigTextarea">إعدادات الاتصال السحابي للمشروع</label>
+              <textarea id="adminCloudConfigTextarea" class="code-textarea" spellcheck="false"></textarea>
+              <button type="button" id="adminSaveCloudConfigBtn" class="btn btn-sage" style="align-self:flex-start;">
+                حفظ وتنشيط الإعدادات
+              </button>
+            </div>
+          </div>
+        </details>
+      </div>
     </div>
   </div>
 

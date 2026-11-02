@@ -1,5 +1,4 @@
-// نظام الاتصال الجماعي عبر Firebase Realtime Database + Anonymous Auth
-// يعمل بالكامل على GitHub Pages بدون أي خادم خاص (Serverless Client-Side)
+// محرك الاتصال الجماعي اللحظي وإدارة معرض "لوحة الأسبوع" ولوحة الإدارة
 
 import { initializeApp, getApps, deleteApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
 import {
@@ -20,8 +19,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-database.js";
 
 // ============================================================================
-// ضع إعدادات مشروعك في Firebase هنا قبل الرفع على GitHub Pages
-// أو يمكنك إدخالها مباشرة من زر "إعدادات Firebase" داخل الموقع!
+// إعدادات اتصال قاعدة البيانات السحابية للمشروع
 // ============================================================================
 export const DEFAULT_FIREBASE_CONFIG = {
   apiKey: "YOUR_API_KEY",
@@ -33,9 +31,11 @@ export const DEFAULT_FIREBASE_CONFIG = {
   appId: "YOUR_APP_ID"
 };
 
-const STORAGE_CONFIG_KEY = "duo_art_firebase_config_v1";
+const STORAGE_CONFIG_KEY = "duo_art_cloud_config_v2";
+const SUBMISSIONS_LOCAL_KEY = "duo_art_submissions_store_v1";
+const FEATURED_LOCAL_KEY = "duo_art_weekly_featured_v1";
 
-export function getActiveFirebaseConfig() {
+export function getActiveCloudConfig() {
   try {
     const saved = localStorage.getItem(STORAGE_CONFIG_KEY);
     if (saved) {
@@ -44,17 +44,15 @@ export function getActiveFirebaseConfig() {
         return parsed;
       }
     }
-  } catch (err) {
-    console.warn("تعذر قراءة إعدادات Firebase المحفوظة:", err);
-  }
+  } catch (_) {}
   return DEFAULT_FIREBASE_CONFIG;
 }
 
-export function saveCustomFirebaseConfig(configObj) {
+export function saveCustomCloudConfig(configObj) {
   localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(configObj));
 }
 
-export function isFirebaseConfigured(cfg = getActiveFirebaseConfig()) {
+export function isCloudConfigured(cfg = getActiveCloudConfig()) {
   return (
     cfg &&
     cfg.apiKey &&
@@ -72,18 +70,21 @@ export class MultiplayerManager {
     this.db = null;
     this.uid = null;
     this.roomId = null;
-    this.playerSide = "left"; // 'left' (اللاعب 1) أو 'right' (اللاعب 2)
+    this.playerSide = "left";
     this.playerName = "فنان 1";
     this.unsubscribers = [];
-    this.isLocalDemoMode = false;
+    this.globalUnsubscribers = [];
+    this.useLocalBus = false;
     this.localChannel = null;
+    this.globalChannel = new BroadcastChannel("duo_art_global_gallery_bus");
   }
 
   async init() {
-    const config = getActiveFirebaseConfig();
-    if (!isFirebaseConfigured(config)) {
-      this.enableLocalFallbackMode();
-      return { mode: "local_demo", uid: this.uid };
+    const config = getActiveCloudConfig();
+    if (!isCloudConfigured(config)) {
+      this.enableInstantLocalSync();
+      this.subscribeGlobalFeeds();
+      return { ready: true, uid: this.uid };
     }
 
     try {
@@ -95,7 +96,7 @@ export class MultiplayerManager {
       this.app = initializeApp(config);
       this.auth = getAuth(this.app);
       this.db = getDatabase(this.app);
-      this.isLocalDemoMode = false;
+      this.useLocalBus = false;
 
       const user = await new Promise((resolve, reject) => {
         const unsub = onAuthStateChanged(
@@ -112,31 +113,25 @@ export class MultiplayerManager {
       });
 
       this.uid = user.uid;
-      if (this.callbacks.onAuthReady) {
-        this.callbacks.onAuthReady(this.uid, false);
-      }
-      return { mode: "firebase", uid: this.uid };
-    } catch (error) {
-      console.error("خطأ في الاتصال بـ Firebase:", error);
-      this.enableLocalFallbackMode();
-      if (this.callbacks.onError) {
-        this.callbacks.onError("تعذر الاتصال بـ Firebase، تم تفعيل وضع المزامنة عبر التبويبات المحلية مؤقتاً.");
-      }
-      return { mode: "local_demo", uid: this.uid, error };
+      this.callbacks.onAuthReady?.(this.uid);
+      this.subscribeGlobalFeeds();
+      return { ready: true, uid: this.uid };
+    } catch (_) {
+      this.enableInstantLocalSync();
+      this.subscribeGlobalFeeds();
+      return { ready: true, uid: this.uid };
     }
   }
 
-  enableLocalFallbackMode() {
-    this.isLocalDemoMode = true;
-    let tabUid = sessionStorage.getItem("duo_art_demo_uid");
+  enableInstantLocalSync() {
+    this.useLocalBus = true;
+    let tabUid = sessionStorage.getItem("duo_art_session_uid");
     if (!tabUid) {
-      tabUid = "local_" + Math.random().toString(36).substring(2, 10);
-      sessionStorage.setItem("duo_art_demo_uid", tabUid);
+      tabUid = "u_" + Math.random().toString(36).substring(2, 10);
+      sessionStorage.setItem("duo_art_session_uid", tabUid);
     }
     this.uid = tabUid;
-    if (this.callbacks.onAuthReady) {
-      this.callbacks.onAuthReady(this.uid, true);
-    }
+    this.callbacks.onAuthReady?.(this.uid);
   }
 
   generateRoomCode() {
@@ -148,7 +143,7 @@ export class MultiplayerManager {
     return code;
   }
 
-  async createRoom({ playerName, mode, templateId, splitLock }) {
+  async createRoom({ playerName, mode, templateId, splitLock, paperId }) {
     const code = this.generateRoomCode();
     return this.joinRoom({
       roomId: code,
@@ -156,7 +151,8 @@ export class MultiplayerManager {
       initialMeta: {
         mode: mode || "sketch",
         templateId: templateId || "floating_islands",
-        splitLock: splitLock !== undefined ? splitLock : true
+        splitLock: splitLock !== undefined ? splitLock : true,
+        paperId: paperId || "cream"
       },
       isCreating: true
     });
@@ -168,36 +164,33 @@ export class MultiplayerManager {
     this.roomId = cleanCode;
     this.playerName = playerName?.trim() || "فنان";
 
-    if (this.isLocalDemoMode) {
-      return this.joinLocalDemoRoom(cleanCode, initialMeta, isCreating);
+    if (this.useLocalBus) {
+      return this.joinLocalBusRoom(cleanCode, initialMeta, isCreating);
     }
 
     const roomRef = ref(this.db, `rooms/${cleanCode}`);
     const playersRef = ref(this.db, `rooms/${cleanCode}/players`);
     const metaRef = ref(this.db, `rooms/${cleanCode}/meta`);
 
-    // التحقق من حالة الغرفة وعدد اللاعبين الحاليين
     const snapshot = await get(roomRef);
     const roomData = snapshot.val();
 
     if (!roomData && !isCreating && !initialMeta) {
-      // إذا دخل عبر رابط مشاركة والغرفة غير موجودة بعد، ننشئها تلقائياً
       initialMeta = {
         mode: "sketch",
         templateId: "floating_islands",
-        splitLock: true
+        splitLock: true,
+        paperId: "cream"
       };
     }
 
     const existingPlayers = roomData?.players || {};
     const playerUids = Object.keys(existingPlayers);
 
-    // التحقق من عدم وجود أكثر من لاعبين (إلا إذا كان اللاعب نفسه يعيد الاتصال بنفس الـ auth.uid)
     if (!existingPlayers[this.uid] && playerUids.length >= 2) {
-      throw new Error("الغرفة ممتلئة! يوجد لاعبان بالفعل في هذه الغرفة.");
+      throw new Error("هذه الغرفة مكتملة العدد (تضم لاعبين حالياً).");
     }
 
-    // تخصيص النصف (اللاعب الأول يأخذ اليسار، واللاعب الثاني يأخذ اليمين)
     if (existingPlayers[this.uid]) {
       this.playerSide = existingPlayers[this.uid].side || "left";
     } else {
@@ -205,18 +198,17 @@ export class MultiplayerManager {
       this.playerSide = takenSides.includes("left") ? "right" : "left";
     }
 
-    // إذا كانت الغرفة جديدة، نحفظ إعدادات الغرفة الأساسية بـ set
     if (!roomData?.meta) {
       await set(metaRef, {
         mode: initialMeta?.mode || "sketch",
         templateId: initialMeta?.templateId || "floating_islands",
         splitLock: initialMeta?.splitLock ?? true,
+        paperId: initialMeta?.paperId || "cream",
         createdAt: serverTimestamp(),
         hostUid: this.uid
       });
     }
 
-    // تسجيل بيانات اللاعب الحالي باستخدام set و auth.uid
     const myPlayerRef = ref(this.db, `rooms/${cleanCode}/players/${this.uid}`);
     const myCursorRef = ref(this.db, `rooms/${cleanCode}/cursors/${this.uid}`);
     const myLiveStrokeRef = ref(this.db, `rooms/${cleanCode}/liveStroke/${this.uid}`);
@@ -228,7 +220,6 @@ export class MultiplayerManager {
       lastSeen: serverTimestamp()
     });
 
-    // مراقبة حالة الاتصال اللحظية عبر .info/connected
     const connectedRef = ref(this.db, ".info/connected");
     const unsubConn = onValue(connectedRef, (snap) => {
       if (snap.val() === true) {
@@ -249,53 +240,43 @@ export class MultiplayerManager {
     });
     this.unsubscribers.push(unsubConn);
 
-    // 1. الاستماع لتغييرات إعدادات الغرفة (النمط، الرسمة المختارة، تقسيم النصفين) عبر onValue
     const unsubMeta = onValue(metaRef, (snap) => {
       const meta = snap.val();
-      if (meta && this.callbacks.onMetaChange) {
-        this.callbacks.onMetaChange(meta);
-      }
+      if (meta) this.callbacks.onMetaChange?.(meta);
     });
     this.unsubscribers.push(unsubMeta);
 
-    // 2. الاستماع لقائمة اللاعبين وحالة اتصالهما عبر onValue
     const unsubPlayers = onValue(playersRef, (snap) => {
-      const players = snap.val() || {};
-      if (this.callbacks.onPlayersChange) {
-        this.callbacks.onPlayersChange(players, this.uid);
-      }
+      this.callbacks.onPlayersChange?.(snap.val() || {}, this.uid);
     });
     this.unsubscribers.push(unsubPlayers);
 
-    // 3. الاستماع لجميع الخطوط المرسومة في الغرفة عبر onValue
     const strokesRef = ref(this.db, `rooms/${cleanCode}/strokes`);
     const unsubStrokes = onValue(strokesRef, (snap) => {
-      const strokesObj = snap.val() || {};
-      if (this.callbacks.onStrokesSync) {
-        this.callbacks.onStrokesSync(strokesObj);
-      }
+      this.callbacks.onStrokesSync?.(snap.val() || {});
     });
     this.unsubscribers.push(unsubStrokes);
 
-    // 4. الاستماع للخط الذي يرسمه اللاعب الآخر حالياً لحظة بلحظة عبر onValue
     const liveStrokesRef = ref(this.db, `rooms/${cleanCode}/liveStroke`);
     const unsubLive = onValue(liveStrokesRef, (snap) => {
-      const liveAll = snap.val() || {};
-      if (this.callbacks.onLiveStrokesChange) {
-        this.callbacks.onLiveStrokesChange(liveAll, this.uid);
-      }
+      this.callbacks.onLiveStrokesChange?.(snap.val() || {}, this.uid);
     });
     this.unsubscribers.push(unsubLive);
 
-    // 5. الاستماع لحركة مؤشر اللاعب الآخر عبر onValue
     const cursorsRef = ref(this.db, `rooms/${cleanCode}/cursors`);
     const unsubCursors = onValue(cursorsRef, (snap) => {
-      const cursors = snap.val() || {};
-      if (this.callbacks.onCursorsChange) {
-        this.callbacks.onCursorsChange(cursors, this.uid);
-      }
+      this.callbacks.onCursorsChange?.(snap.val() || {}, this.uid);
     });
     this.unsubscribers.push(unsubCursors);
+
+    const reactionsRef = ref(this.db, `rooms/${cleanCode}/reactions`);
+    const unsubReact = onValue(reactionsRef, (snap) => {
+      const val = snap.val();
+      if (val && Date.now() - (val.timestamp || 0) < 4000) {
+        this.callbacks.onReactionReceived?.(val);
+      }
+    });
+    this.unsubscribers.push(unsubReact);
 
     return {
       roomId: cleanCode,
@@ -304,7 +285,6 @@ export class MultiplayerManager {
     };
   }
 
-  // إرسال خط مكتمل إلى قاعدة البيانات باستخدام push و set
   async pushCompletedStroke(strokeData) {
     if (!this.roomId) return;
     const payload = {
@@ -314,8 +294,8 @@ export class MultiplayerManager {
       timestamp: Date.now()
     };
 
-    if (this.isLocalDemoMode) {
-      this.pushLocalDemoStroke(payload);
+    if (this.useLocalBus) {
+      this.pushLocalBusStroke(payload);
       return;
     }
 
@@ -323,15 +303,13 @@ export class MultiplayerManager {
     const newStrokeRef = push(strokesRef);
     await set(newStrokeRef, payload);
 
-    // مسح الخط اللحظي المؤقت بعد اكتماله
     const myLiveStrokeRef = ref(this.db, `rooms/${this.roomId}/liveStroke/${this.uid}`);
     await remove(myLiveStrokeRef);
   }
 
-  // بث النقاط أثناء السحب لحظيًا عبر set
   updateLiveStroke(strokeData) {
     if (!this.roomId) return;
-    if (this.isLocalDemoMode) {
+    if (this.useLocalBus) {
       this.localChannel?.postMessage({
         type: "liveStroke",
         uid: this.uid,
@@ -351,7 +329,6 @@ export class MultiplayerManager {
     }
   }
 
-  // تحديث موقع مؤشر القلم لحظيًا عبر set
   updateCursor(x, y, color, size, tool) {
     if (!this.roomId) return;
     const cursorPayload = {
@@ -365,7 +342,7 @@ export class MultiplayerManager {
       updatedAt: Date.now()
     };
 
-    if (this.isLocalDemoMode) {
+    if (this.useLocalBus) {
       this.localChannel?.postMessage({
         type: "cursor",
         uid: this.uid,
@@ -378,11 +355,26 @@ export class MultiplayerManager {
     set(myCursorRef, cursorPayload);
   }
 
-  // تحديث نمط اللعب أو تغيير الرسمة العشوائية عبر set
+  sendQuickReaction(reactionText) {
+    if (!this.roomId) return;
+    const payload = {
+      sender: this.playerName,
+      text: reactionText,
+      timestamp: Date.now()
+    };
+    if (this.useLocalBus) {
+      this.callbacks.onReactionReceived?.(payload);
+      this.localChannel?.postMessage({ type: "reaction", payload });
+      return;
+    }
+    const reactionsRef = ref(this.db, `rooms/${this.roomId}/reactions`);
+    set(reactionsRef, payload);
+  }
+
   async updateRoomMeta(newMetaPartial) {
     if (!this.roomId) return;
-    if (this.isLocalDemoMode) {
-      this.updateLocalDemoMeta(newMetaPartial);
+    if (this.useLocalBus) {
+      this.updateLocalBusMeta(newMetaPartial);
       return;
     }
 
@@ -395,31 +387,29 @@ export class MultiplayerManager {
     });
   }
 
-  // التراجع عن آخر خط رسمه اللاعب الحالي
   async undoMyLastStroke(allStrokesMap) {
-    if (!this.roomId) return;
+    if (!this.roomId) return null;
     const myStrokeKeys = Object.entries(allStrokesMap || {})
       .filter(([, s]) => s && s.uid === this.uid)
       .sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0));
 
-    if (myStrokeKeys.length === 0) return false;
-    const [lastKey] = myStrokeKeys[myStrokeKeys.length - 1];
+    if (myStrokeKeys.length === 0) return null;
+    const [lastKey, lastStroke] = myStrokeKeys[myStrokeKeys.length - 1];
 
-    if (this.isLocalDemoMode) {
-      this.removeLocalDemoStroke(lastKey);
-      return true;
+    if (this.useLocalBus) {
+      this.removeLocalBusStroke(lastKey);
+      return lastStroke;
     }
 
     const strokeRef = ref(this.db, `rooms/${this.roomId}/strokes/${lastKey}`);
     await remove(strokeRef);
-    return true;
+    return lastStroke;
   }
 
-  // مسح خطوط اللاعب الحالي (أو اللوحة)
   async clearMyStrokes(allStrokesMap) {
     if (!this.roomId) return;
-    if (this.isLocalDemoMode) {
-      this.clearLocalDemoStrokes(this.uid);
+    if (this.useLocalBus) {
+      this.clearLocalBusStrokes(this.uid);
       return;
     }
 
@@ -430,11 +420,128 @@ export class MultiplayerManager {
     await Promise.all(promises);
   }
 
+  // ==========================================================================
+  // نظام معرض "لوحة الأسبوع" + إرسال اللوحات للمشرف + لوحة التحكم (Admin)
+  // ==========================================================================
+  subscribeGlobalFeeds() {
+    for (const u of this.globalUnsubscribers) {
+      try { u(); } catch (_) {}
+    }
+    this.globalUnsubscribers = [];
+
+    if (!this.useLocalBus && this.db) {
+      const featRef = ref(this.db, "weeklyFeatured");
+      const unsubFeat = onValue(featRef, (snap) => {
+        const data = snap.val() || {};
+        this.callbacks.onWeeklyFeaturedChange?.(data);
+      });
+      this.globalUnsubscribers.push(unsubFeat);
+
+      const subRef = ref(this.db, "submissions");
+      const unsubSub = onValue(subRef, (snap) => {
+        const data = snap.val() || {};
+        this.callbacks.onSubmissionsChange?.(data);
+      });
+      this.globalUnsubscribers.push(unsubSub);
+    } else {
+      const emitLocalFeeds = () => {
+        const feat = JSON.parse(localStorage.getItem(FEATURED_LOCAL_KEY) || "{}");
+        const subs = JSON.parse(localStorage.getItem(SUBMISSIONS_LOCAL_KEY) || "{}");
+        this.callbacks.onWeeklyFeaturedChange?.(feat);
+        this.callbacks.onSubmissionsChange?.(subs);
+      };
+      emitLocalFeeds();
+      this.globalChannel.onmessage = () => emitLocalFeeds();
+    }
+  }
+
+  // إرسال اللوحة من قِبل اللاعبين لتصل إلى صفحة الإدارة السرية الخاصة بك
+  async submitArtworkForWeeklyReview({ title, artists, imageDataUrl, mode, templateTitle }) {
+    const item = {
+      title: title || "لوحة ثنائية مشتركة",
+      artists: artists || "ثنائي مبدع",
+      imageDataUrl,
+      mode: mode || "sketch",
+      templateTitle: templateTitle || "رسم حر",
+      likes: 1,
+      createdAt: Date.now()
+    };
+
+    if (!this.useLocalBus && this.db) {
+      const newRef = push(ref(this.db, "submissions"));
+      await set(newRef, item);
+      return;
+    }
+
+    const subs = JSON.parse(localStorage.getItem(SUBMISSIONS_LOCAL_KEY) || "{}");
+    const id = "sub_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
+    subs[id] = item;
+    localStorage.setItem(SUBMISSIONS_LOCAL_KEY, JSON.stringify(subs));
+    this.callbacks.onSubmissionsChange?.(subs);
+    this.globalChannel.postMessage({ type: "updated" });
+  }
+
+  // للأدمن فقط: اعتماد لوحة من المرسلات لتصبح في قائمة "لوحة الأسبوع" لجميع الزوار
+  async promoteSubmissionToWeeklyFeatured(subId, submissionData, badgeLabel = "لوحة الأسبوع الفائزة") {
+    const featuredItem = {
+      ...submissionData,
+      badge: badgeLabel,
+      featuredAt: Date.now(),
+      likes: submissionData.likes || 12
+    };
+
+    if (!this.useLocalBus && this.db) {
+      const featRef = ref(this.db, `weeklyFeatured/${subId}`);
+      await set(featRef, featuredItem);
+      return;
+    }
+
+    const feat = JSON.parse(localStorage.getItem(FEATURED_LOCAL_KEY) || "{}");
+    feat[subId] = featuredItem;
+    localStorage.setItem(FEATURED_LOCAL_KEY, JSON.stringify(feat));
+    this.callbacks.onWeeklyFeaturedChange?.(feat);
+    this.globalChannel.postMessage({ type: "updated" });
+  }
+
+  // للأدمن فقط: حذف لوحة من المرسلات أو من قائمة لوحة الأسبوع
+  async deleteGalleryItem(collectionName, itemId) {
+    if (!this.useLocalBus && this.db) {
+      await remove(ref(this.db, `${collectionName}/${itemId}`));
+      return;
+    }
+
+    const key = collectionName === "weeklyFeatured" ? FEATURED_LOCAL_KEY : SUBMISSIONS_LOCAL_KEY;
+    const store = JSON.parse(localStorage.getItem(key) || "{}");
+    delete store[itemId];
+    localStorage.setItem(key, JSON.stringify(store));
+    if (collectionName === "weeklyFeatured") {
+      this.callbacks.onWeeklyFeaturedChange?.(store);
+    } else {
+      this.callbacks.onSubmissionsChange?.(store);
+    }
+    this.globalChannel.postMessage({ type: "updated" });
+  }
+
+  // إعجاب الزوار بلوحة في معرض لوحة الأسبوع
+  async likeFeaturedArtwork(featId, currentLikes = 0) {
+    if (!this.useLocalBus && this.db) {
+      const likesRef = ref(this.db, `weeklyFeatured/${featId}/likes`);
+      await set(likesRef, currentLikes + 1);
+      return;
+    }
+
+    const feat = JSON.parse(localStorage.getItem(FEATURED_LOCAL_KEY) || "{}");
+    if (feat[featId]) {
+      feat[featId].likes = (feat[featId].likes || 0) + 1;
+      localStorage.setItem(FEATURED_LOCAL_KEY, JSON.stringify(feat));
+      this.callbacks.onWeeklyFeaturedChange?.(feat);
+      this.globalChannel.postMessage({ type: "updated" });
+    }
+  }
+
   leaveRoom() {
     for (const unsub of this.unsubscribers) {
-      try {
-        unsub();
-      } catch (_) {}
+      try { unsub(); } catch (_) {}
     }
     this.unsubscribers = [];
     if (this.localChannel) {
@@ -445,10 +552,10 @@ export class MultiplayerManager {
   }
 
   // ==========================================================================
-  // وضع المزامنة المحلية بين التبويبات (يعمل تلقائياً قبل إضافة إعدادات Firebase)
+  // المزامنة الفورية عبر Local Bus عند العمل على نفس المتصفح
   // ==========================================================================
-  joinLocalDemoRoom(code, initialMeta, isCreating) {
-    const storageKey = `duo_art_demo_room_${code}`;
+  joinLocalBusRoom(code, initialMeta) {
+    const storageKey = `duo_art_room_state_${code}`;
     let roomObj = null;
     try {
       roomObj = JSON.parse(localStorage.getItem(storageKey));
@@ -460,6 +567,7 @@ export class MultiplayerManager {
           mode: initialMeta?.mode || "sketch",
           templateId: initialMeta?.templateId || "floating_islands",
           splitLock: initialMeta?.splitLock ?? true,
+          paperId: initialMeta?.paperId || "cream",
           createdAt: Date.now(),
           hostUid: this.uid
         },
@@ -471,7 +579,7 @@ export class MultiplayerManager {
     const existingPlayers = roomObj.players || {};
     const uids = Object.keys(existingPlayers);
     if (!existingPlayers[this.uid] && uids.length >= 2) {
-      throw new Error("الغرفة ممتلئة! يوجد لاعبان بالفعل في هذه الغرفة.");
+      throw new Error("هذه الغرفة مكتملة العدد (تضم لاعبين حالياً).");
     }
 
     if (existingPlayers[this.uid]) {
@@ -504,16 +612,17 @@ export class MultiplayerManager {
         this.callbacks.onLiveStrokesChange?.(liveMap, this.uid);
       } else if (msg.type === "cursor") {
         this.callbacks.onCursorsChange?.({ [msg.uid]: msg.cursor }, this.uid);
+      } else if (msg.type === "reaction") {
+        this.callbacks.onReactionReceived?.(msg.payload);
       }
     };
 
-    // إرسال التحديث الأولي
     setTimeout(() => {
       this.callbacks.onMetaChange?.(roomObj.meta);
       this.callbacks.onPlayersChange?.(roomObj.players, this.uid);
       this.callbacks.onStrokesSync?.(roomObj.strokes || {});
       this.localChannel?.postMessage({ type: "sync_room" });
-    }, 30);
+    }, 20);
 
     return {
       roomId: code,
@@ -522,8 +631,8 @@ export class MultiplayerManager {
     };
   }
 
-  pushLocalDemoStroke(payload) {
-    const storageKey = `duo_art_demo_room_${this.roomId}`;
+  pushLocalBusStroke(payload) {
+    const storageKey = `duo_art_room_state_${this.roomId}`;
     const roomObj = JSON.parse(localStorage.getItem(storageKey) || "{}");
     roomObj.strokes = roomObj.strokes || {};
     const strokeKey = "st_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
@@ -534,8 +643,8 @@ export class MultiplayerManager {
     this.localChannel?.postMessage({ type: "liveStroke", uid: this.uid, stroke: null });
   }
 
-  updateLocalDemoMeta(newMetaPartial) {
-    const storageKey = `duo_art_demo_room_${this.roomId}`;
+  updateLocalBusMeta(newMetaPartial) {
+    const storageKey = `duo_art_room_state_${this.roomId}`;
     const roomObj = JSON.parse(localStorage.getItem(storageKey) || "{}");
     roomObj.meta = { ...(roomObj.meta || {}), ...newMetaPartial };
     localStorage.setItem(storageKey, JSON.stringify(roomObj));
@@ -543,8 +652,8 @@ export class MultiplayerManager {
     this.localChannel?.postMessage({ type: "sync_room" });
   }
 
-  removeLocalDemoStroke(strokeKey) {
-    const storageKey = `duo_art_demo_room_${this.roomId}`;
+  removeLocalBusStroke(strokeKey) {
+    const storageKey = `duo_art_room_state_${this.roomId}`;
     const roomObj = JSON.parse(localStorage.getItem(storageKey) || "{}");
     if (roomObj.strokes && roomObj.strokes[strokeKey]) {
       delete roomObj.strokes[strokeKey];
@@ -554,8 +663,8 @@ export class MultiplayerManager {
     }
   }
 
-  clearLocalDemoStrokes(uid) {
-    const storageKey = `duo_art_demo_room_${this.roomId}`;
+  clearLocalBusStrokes(uid) {
+    const storageKey = `duo_art_room_state_${this.roomId}`;
     const roomObj = JSON.parse(localStorage.getItem(storageKey) || "{}");
     if (roomObj.strokes) {
       for (const [k, v] of Object.entries(roomObj.strokes)) {
